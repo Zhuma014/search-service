@@ -1,0 +1,1 @@
+# Initialize elasticsearch package
