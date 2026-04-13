@@ -1,11 +1,24 @@
 from fastapi import APIRouter, Request, HTTPException, Header, Query
 from app.services.sync_service import sync_documents
+from pydantic import BaseModel
+from typing import List, Optional
 import logging
+
+# ── Response Models ────────────────────────────────────
+class SyncError(BaseModel):
+    document_id: Optional[str] = None
+    error: str
+
+class SyncResponse(BaseModel):
+    status: str
+    synced_count: int
+    errors_count: int
+    errors: List[SyncError] = []
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.post("/upload")
+@router.post("/upload", response_model=SyncResponse, summary="Sync Documents", description="Synchronize documents from PostgreSQL/MinIO to Elasticsearch")
 async def trigger_sync(
     request: Request,
     document_id: str = Query(None),

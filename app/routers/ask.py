@@ -6,6 +6,7 @@ from config import settings
 import google.generativeai as genai
 from datetime import datetime
 from collections import deque
+from typing import Optional
 import logging
 
 router = APIRouter()
@@ -24,9 +25,13 @@ class AskRequest(BaseModel):
     question:    str
     session_id:  str = None
 
+class AskResponse(BaseModel):
+    document_id: str
+    session_id: Optional[str] = None
+    question: str
+    answer: str
 
-
-@router.post("/ask")
+@router.post("/ask", response_model=AskResponse, summary="Ask Question", description="Ask a question about a specific document using RAG with Gemini")
 async def ask_question(
     request: Request,
     body: AskRequest,
@@ -75,10 +80,14 @@ async def ask_question(
         # 4. Формируем промпт для Gemini
         history_header = f"История беседы:\n{history_context}\n" if history_context else ""
 
-        prompt = f"""Ты помощник для работы с документами.
-Отвечай ТОЛЬКО на основе предоставленного текста документа.
-Если ответа нет в тексте — честно скажи об этом.
-Отвечай на русском языке, кратко и по существу.
+        prompt = f"""Ты — экспертный аналитик документов. 
+Твоя задача: дать подробный, развернутый и информативный ответ на основе предоставленного текста.
+
+Правила:
+1. Используй только информацию из «Текста документа» ниже.
+2. Не ограничивайся короткими фразами. Раскрывай детали, приводи пояснения.
+3. Отвечай на том языке, на котором задан вопрос.
+4. Если в тексте нет ответа, прямо сообщи об этом, не выдумывая фактов.
 
 {history_header}
 Текст документа:

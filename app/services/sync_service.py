@@ -126,12 +126,14 @@ async def sync_documents(company_id: str = None, document_id: str = None):
                     logger.info(f"✓ Synced doc {doc_id}")
 
                 except Exception as e:
-                    logger.error(f"✗ Failed doc {doc_id}: {e}")
-                    errors.append({"id": doc_id, "error": str(e)})
+                    error_msg = str(e) or f"{type(e).__name__}: No message"
+                    logger.error(f"✗ Failed doc {doc_id}: {error_msg}", exc_info=True)
+                    errors.append({"id": doc_id, "error": error_msg})
 
         except Exception as e:
-            logger.error(f"Postgres query error: {e}")
-            errors.append({"error": str(e)})
+            error_msg = str(e) or f"{type(e).__name__}: No message"
+            logger.error(f"Postgres query error: {error_msg}", exc_info=True)
+            errors.append({"error": error_msg})
 
     logger.info(f"Sync done. Synced: {synced_count}, Errors: {len(errors)}")
     return synced_count, errors

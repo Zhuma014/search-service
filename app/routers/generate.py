@@ -15,8 +15,10 @@ model = genai.GenerativeModel(settings.GEMINI_MODEL)
 class GenerateRequest(BaseModel):
     prompt: str
 
+class GenerateResponse(BaseModel):
+    text: str
 
-@router.post("/generate")
+@router.post("/generate", response_model=GenerateResponse, summary="Generate Text", description="Generate professional text for document-related requests using Gemini")
 async def generate(
     request: Request,
     body: GenerateRequest

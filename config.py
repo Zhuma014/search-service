@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
     
     # PostgreSQL
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+    DATABASE_URL: str = ""
     SYNC_TABLE: str = os.getenv("SYNC_TABLE", "document")
     SYNC_LIMIT: int = int(os.getenv("SYNC_LIMIT", "20"))
     
@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     MINIO_SECURE: bool = os.getenv("MINIO_SECURE", "true").lower() == "true"
     
     # Service
-    SERVICE_PORT: int = 8002
+    SERVICE_PORT: int = 8000
     LOG_LEVEL: str = "info"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")

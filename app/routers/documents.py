@@ -1,11 +1,30 @@
 from fastapi import APIRouter, Request, Query, HTTPException, Header
 from app.elasticsearch.client import ESClient, get_index_name
+from pydantic import BaseModel
+from typing import List, Optional
 import logging
+
+# ── Response Models ────────────────────────────────────
+class DocumentItem(BaseModel):
+    document_id: str
+    title: str
+    created_at: str
+
+class DocumentListResponse(BaseModel):
+    total: int
+    page: int
+    size: int
+    documents: List[DocumentItem]
+
+class DocumentDeleteResponse(BaseModel):
+    document_id: str
+    deleted_chunks: int
+    status: str
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-@router.get("/documents")
+@router.get("/documents", response_model=DocumentListResponse, summary="List Documents", description="Get paginated list of all documents in the index")
 async def list_documents(
     request: Request,
     page: int = Query(1, ge=1),
@@ -55,7 +74,7 @@ async def list_documents(
         return {"total": 0, "page": page, "size": size, "documents": []}
 
 
-@router.delete("/documents/{document_id}")
+@router.delete("/documents/{document_id}", response_model=DocumentDeleteResponse, summary="Delete Document", description="Delete a document and all its chunks from the index")
 async def delete_document(
     document_id: str,
     request: Request,
