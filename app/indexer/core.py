@@ -42,6 +42,17 @@ async def index_document_content(
     index_name = get_index_name(company_id)
     client     = ESClient.get_client()
 
+    # Очистить старые чанки этого документа перед переиндексацией
+    # try:
+    #     await client.delete_by_query(
+    #         index=index_name,
+    #         body={"query": {"term": {"document_id": doc_id}}},
+    #         refresh=True
+    #     )
+    #     logger.info(f"Cleared old chunks for doc {doc_id}")
+    # except Exception as e:
+    #     logger.warning(f"Could not clear old chunks for doc {doc_id} (might be new): {e}")
+
     # Нарезать на чанки
     chunks = chunk_text(text)
     logger.info(f"Doc {doc_id}: {len(chunks)} chunks from {filename}")

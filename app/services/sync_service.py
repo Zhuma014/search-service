@@ -73,7 +73,7 @@ async def sync_documents(company_id: str = None, document_id: str = None):
                 AND dt.filename IS NOT NULL AND dt.filename != ''
             """
 
-            params = {"limit": settings.SYNC_LIMIT}
+            params = {}
 
             if company_id:
                 query_str += " AND d.company_id = :company_id"
@@ -84,6 +84,7 @@ async def sync_documents(company_id: str = None, document_id: str = None):
                 params["document_id"] = int(document_id) if document_id.isdigit() else document_id
 
             query_str += " ORDER BY d.id DESC LIMIT :limit"
+            params["limit"] = settings.SYNC_LIMIT
 
             res = await session.execute(text(query_str), params)
             docs_metadata = [dict(row._mapping) for row in res.all()]
@@ -95,8 +96,25 @@ async def sync_documents(company_id: str = None, document_id: str = None):
                 file_path = doc.get('file_path', '')
                 doc_id    = str(doc.get('id'))
                 title     = doc.get('title') or doc.get('filename') or 'Untitled'
+                # index_name = get_index_name(c_id) if c_id else "*_documents"
 
                 try:
+                    # ── ПРОВЕРКА НА ДУБЛИКАТЫ (DEDUPLICATION) ────────────────
+                    # client = ESClient.get_client()
+                    # exists = False
+                    # try:
+                    #     search_res = await client.search(
+                    #         index=index_name,
+                    #         body={"query": {"term": {"document_id": doc_id}}, "size": 0}
+                    #     )
+                    #     exists = search_res['hits']['total']['value'] > 0
+                    # except Exception:
+                    #     pass # Индекс может не существовать
+                    
+                    # if exists:
+                    #     logger.info(f"⏩ Skip doc {doc_id} (already in ES)")
+                    #     continue
+
                     logger.info(f"Syncing doc {doc_id} ({doc.get('number')}) from {file_path}")
 
                     # 1. Найти и скачать лучший файл из MinIO

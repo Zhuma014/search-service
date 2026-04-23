@@ -9,7 +9,10 @@ from config import settings
 from sqlalchemy import text
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
+# from app.services.sync_service import sync_documents
+# from apscheduler.schedulers.asyncio import AsyncIOScheduler
 import logging
+import time
 
 # ── Response Models ────────────────────────────────────
 class ServiceStatus(BaseModel):
@@ -57,7 +60,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠ Failed to connect to MinIO: {type(e).__name__}")
     
+    # Setup Scheduler for Daily Sync
+    # scheduler = AsyncIOScheduler()
+    
+    # # Каждую полночь (00:00) запускаем синхронизацию для компании 1
+    # scheduler.add_job(
+    #     sync_documents, 
+    #     "cron", 
+    #     hour=19, 
+    #     minute=5, 
+    #     args=["1"], 
+    #     name="daily_sync_company_1"
+    # )
+    
+    # scheduler.start()
+    # logger.info("✓ Scheduler started: Daily sync at 00:00 for company_id=1")
+
     yield
+    
+    # scheduler.shutdown()
+    # logger.info("Scheduler shutdown")
     
     await ESClient.close()
     logger.info("Closed Elasticsearch connection")

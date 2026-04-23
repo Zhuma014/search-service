@@ -72,7 +72,10 @@ async def ask_question(
         chunks = [hit["_source"]["content"] for hit in response["hits"]["hits"]]
         if not chunks:
             return {
-                "answer": "Документ не найден или в нём нет информации по вашему вопросу."
+                "document_id": body.document_id,
+                "question":    body.question,
+                "answer":      "Документ не найден или в нём нет информации по вашему вопросу.",
+                "session_id":  body.session_id
             }
 
         context = "\n\n".join(chunks)
@@ -103,7 +106,7 @@ async def ask_question(
         # 6. Сохраняем в историю
         if body.session_id:
             if body.session_id not in chat_memory:
-                chat_memory[body.session_id] = deque(maxlen=5)
+                chat_memory[body.session_id] = deque(maxlen=8)
             chat_memory[body.session_id].append({"role": "user",      "content": body.question})
             chat_memory[body.session_id].append({"role": "assistant", "content": ai_answer})
 

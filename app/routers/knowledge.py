@@ -15,7 +15,7 @@ class KnowledgeRequest(BaseModel):
     question: str
 
 class KnowledgeResponse(BaseModel):
-    output: str
+    answer: str
 
 @router.post("/knowledge", 
              response_model=KnowledgeResponse, 
@@ -56,7 +56,10 @@ async def query_knowledge(request: Request, body: KnowledgeRequest):
         logger.debug(f"n8n response: {response.text}")
         
         try:
-            return response.json()
+            data = response.json()
+            if "output" in data:
+                data["answer"] = data.pop("output")
+            return data
         except ValueError as e:
             logger.error(f"Failed to parse n8n response as JSON. Status: {response.status_code}, Headers: {dict(response.headers)}, Content: {response.text[:200]}")
             raise HTTPException(status_code=502, detail=f"Invalid JSON response from n8n (Status {response.status_code}): {response.text[:100]}")

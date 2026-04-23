@@ -1,4 +1,5 @@
 .env
+wg0.conf
 
 # Python
 __pycache__/

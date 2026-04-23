@@ -33,7 +33,7 @@ async def search_documents_lexical(
     request: Request,
     q: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
-    size: int = Query(20, ge=1, le=100),
+    size: int = Query(10, ge=1, le=100),
     x_company_id: str = Header(None, alias="X-Company-ID")
 ):
     start_time = time.time()
@@ -78,7 +78,7 @@ async def search_documents_lexical(
             logger.info(f"⏱️ [QUERY 1] PG allowed_doc_ids (UNION): {len(allowed_doc_ids)} docs in {time.time()-t1_start:.2f}s")
             
         except Exception as e:
-            logger.error(f"Error querying allowed docs: {e}")
+            logger.exception("Error querying allowed docs")
             return {"total": 0, "page": page, "results": []}
 
     if not allowed_doc_ids:
@@ -103,6 +103,10 @@ async def search_documents_lexical(
                 }],
                 "filter": [{"terms": {"document_id": allowed_doc_ids}}]
             }
+        },
+        "track_total_hits": True,
+        "collapse": {
+            "field": "document_id"
         },
         "highlight": {
             "fields":    {"content": {}},

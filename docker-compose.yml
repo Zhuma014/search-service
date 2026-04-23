@@ -5,8 +5,7 @@ services:
   search-service:
     build: .
     container_name: search-service
-    ports:
-      - "8000:8000"
+    network_mode: host
     env_file:
       - .env
     depends_on:
@@ -16,8 +15,6 @@ services:
     volumes:
       - .:/app
     command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
-    networks:
-      - search-net
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
