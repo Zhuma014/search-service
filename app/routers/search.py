@@ -70,12 +70,12 @@ async def search_documents_lexical(
             # Вторая часть: idx_task_assigned_to
             res = await session.execute(text("""
                 SELECT id FROM document WHERE created_by = :user_db_id
-                UNION
-                SELECT DISTINCT document_id FROM task WHERE assigned_to = :user_db_id
+                UNION ALL
+                SELECT document_id FROM task WHERE assigned_to = :user_db_id
             """), {"user_db_id": user_db_id})
             
-            allowed_doc_ids = [str(row[0]) for row in res.all()]
-            logger.info(f"⏱️ [QUERY 1] PG allowed_doc_ids (UNION): {len(allowed_doc_ids)} docs in {time.time()-t1_start:.2f}s")
+            allowed_doc_ids = list({str(row[0]) for row in res.all()})
+            logger.info(f"⏱️ [QUERY 1] PG allowed_doc_ids (UNION ALL): {len(allowed_doc_ids)} docs in {time.time()-t1_start:.2f}s")
             
         except Exception as e:
             logger.exception("Error querying allowed docs")
@@ -148,6 +148,7 @@ async def search_documents_lexical(
                         FROM task
                         WHERE status = 'COMPLETED' 
                           AND action_required = 'REGISTER'
+                          AND document_id = ANY(:doc_ids)
                         ORDER BY document_id, completed_at DESC
                     )
                     SELECT

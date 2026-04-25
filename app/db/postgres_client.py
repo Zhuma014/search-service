@@ -25,11 +25,15 @@ class PostgresClient:
             cls._engine = create_async_engine(
                 settings.DATABASE_URL,
                 echo=False,
-                pool_size=30,              # ← Основной размер пула
-                max_overflow=50,           # ← Дополнительные соединения если нужны
-                pool_timeout=30,           # ← Максимум 30 сек ждать соединение
-                pool_recycle=3600,         # ← Переиспользовать каждый час
+                pool_size=10,              # ← Основной размер пула
+                max_overflow=20,           # ← Дополнительные соединения если нужны
+                pool_timeout=10,           # ← Максимум 30 сек ждать соединение
+                pool_recycle=300,         # ← Переиспользовать каждый час
                 pool_pre_ping=True,        # ← Проверять соединение перед использованием
+                connect_args={
+                "timeout": 10,         # ← таймаут подключения 10 сек
+                "command_timeout": 10, # ← таймаут запроса 10 сек
+                        }
             )
             
             logger.info("✓ PostgreSQL engine created with async pool")
