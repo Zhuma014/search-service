@@ -31,9 +31,10 @@ class PostgresClient:
                 pool_recycle=300,         # ← Переиспользовать каждый час
                 pool_pre_ping=True,        # ← Проверять соединение перед использованием
                 connect_args={
-                "timeout": 10,         # ← таймаут подключения 10 сек
-                "command_timeout": 10, # ← таймаут запроса 10 сек
-                        }
+                    "timeout": 10,         # ← таймаут подключения 10 сек
+                    "command_timeout": 10, # ← таймаут запроса 10 сек
+                    "ssl": "require"
+                }
             )
             
             logger.info("✓ PostgreSQL engine created with async pool")
