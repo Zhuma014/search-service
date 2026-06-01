@@ -3,21 +3,15 @@ from app.storage.minio_client import minio_client
 from app.indexer.core import index_document_content
 from config import settings
 from sqlalchemy import text
+from starlette.concurrency import run_in_threadpool
 import logging
-import posixpath
 
 logger = logging.getLogger(__name__)
 
 
-
-def get_best_file(file_path: str) -> tuple[str, bytes]:
-    
-    client = minio_client.get_client()  # ← используем get_client()
-    
-    objects = list(client.list_objects(
-        settings.MINIO_BUCKET,
-        prefix=file_path
-    ))
+def _get_best_file_sync(file_path: str) -> tuple[str, bytes]:
+    client  = minio_client.get_client()
+    objects = list(client.list_objects(settings.MINIO_BUCKET, prefix=file_path))
 
     if not objects:
         raise Exception(f"Нет файлов по пути {file_path}")
@@ -28,24 +22,22 @@ def get_best_file(file_path: str) -> tuple[str, bytes]:
     xlsx_files = [o for o in objects if o.object_name.endswith('.xlsx')]
     any_files  = [o for o in objects if not o.object_name.endswith('.htm')]
 
-    target = None
-    if pdf_files:
-        target = pdf_files[0]
-    elif docx_files:
-        target = docx_files[0]
-    elif xlsx_files:
-        target = xlsx_files[0]
-    elif any_files:
-        target = any_files[0]
+    target = pdf_files[0] if pdf_files \
+        else docx_files[0] if docx_files \
+        else xlsx_files[0] if xlsx_files \
+        else any_files[0]  if any_files \
+        else None
 
     if not target:
         raise Exception(f"Нет подходящих файлов в {file_path}")
 
-    # Скачать через download_file метод
     content  = minio_client.download_file(target.object_name)
     filename = target.object_name.split('/')[-1]
-
     return filename, content
+
+
+async def get_best_file(file_path: str) -> tuple[str, bytes]:
+    return await run_in_threadpool(_get_best_file_sync, file_path)
 
 
 async def sync_documents(company_id: str = None, document_id: str = None):
@@ -118,7 +110,7 @@ async def sync_documents(company_id: str = None, document_id: str = None):
                     logger.info(f"Syncing doc {doc_id} ({doc.get('number')}) from {file_path}")
 
                     # 1. Найти и скачать лучший файл из MinIO
-                    filename, content = get_best_file(file_path)
+                    filename, content = await get_best_file(file_path)
 
                     logger.info(f"Downloaded {filename} ({len(content)} bytes)")
 

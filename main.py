@@ -2,17 +2,16 @@ from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from app.elasticsearch.client import ESClient
 from app.middleware.tenant import TenantMiddleware
-from app.routers import search, documents, ask, upload, generate, knowledge
+from app.routers import search, documents, ask, upload, generate, knowledge, sync
 from app.db.postgres_client import postgres_client
 from app.storage.minio_client import minio_client
+from app.services.incremental_sync import run_incremental_sync
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from config import settings
 from sqlalchemy import text
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
-# from app.services.sync_service import sync_documents
-# from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from typing import Optional
 import logging
-import time
 
 # ── Response Models ────────────────────────────────────
 class ServiceStatus(BaseModel):
@@ -60,29 +59,26 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"⚠ Failed to connect to MinIO: {type(e).__name__}")
     
-    # Setup Scheduler for Daily Sync
-    # scheduler = AsyncIOScheduler()
-    
-    # # Каждую полночь (00:00) запускаем синхронизацию для компании 1
-    # scheduler.add_job(
-    #     sync_documents, 
-    #     "cron", 
-    #     hour=19, 
-    #     minute=5, 
-    #     args=["1"], 
-    #     name="daily_sync_company_1"
-    # )
-    
-    # scheduler.start()
-    # logger.info("✓ Scheduler started: Daily sync at 00:00 for company_id=1")
+    # Hourly incremental sync scheduler
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        run_incremental_sync,
+        "interval",
+        hours=1,
+        name="hourly_incremental_sync",
+    )
+    scheduler.start()
+    logger.info("✓ Scheduler started: hourly incremental sync")
 
     yield
-    
-    # scheduler.shutdown()
-    # logger.info("Scheduler shutdown")
+
+    scheduler.shutdown()
+    logger.info("Scheduler shutdown")
     
     await ESClient.close()
     logger.info("Closed Elasticsearch connection")
+    await postgres_client.close()
+    logger.info("Closed PostgreSQL connection pool")
 
 app = FastAPI(
     title="Search Service",
@@ -144,9 +140,10 @@ async def health_check():
     return result
 
 # Включаем роутеры с префиксом /ai/api
-app.include_router(search.router, prefix="/ai/api", tags=["search"])
-app.include_router(upload.router, prefix="/ai/api", tags=["upload to ES"])
+app.include_router(search.router,    prefix="/ai/api", tags=["search"])
+app.include_router(upload.router,    prefix="/ai/api", tags=["upload to ES"])
 app.include_router(documents.router, prefix="/ai/api", tags=["documents in ES"])
-app.include_router(ask.router, prefix="/ai/api", tags=["ask"])
-app.include_router(generate.router, prefix="/ai/api", tags=["generate"])
+app.include_router(ask.router,       prefix="/ai/api", tags=["ask"])
+app.include_router(generate.router,  prefix="/ai/api", tags=["generate"])
 app.include_router(knowledge.router, prefix="/ai/api", tags=["knowledge"])
+app.include_router(sync.router,      prefix="/ai/api", tags=["sync"])

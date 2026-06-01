@@ -2,6 +2,7 @@ from app.extractor.parser import extract_text
 from app.elasticsearch.client import ESClient, get_index_name
 from app.elasticsearch.indexes import ensure_index
 from config import settings
+from elasticsearch.helpers import async_bulk
 import uuid
 from datetime import datetime
 import logging
@@ -42,16 +43,16 @@ async def index_document_content(
     index_name = get_index_name(company_id)
     client     = ESClient.get_client()
 
-    # Очистить старые чанки этого документа перед переиндексацией
-    # try:
-    #     await client.delete_by_query(
-    #         index=index_name,
-    #         body={"query": {"term": {"document_id": doc_id}}},
-    #         refresh=True
-    #     )
-    #     logger.info(f"Cleared old chunks for doc {doc_id}")
-    # except Exception as e:
-    #     logger.warning(f"Could not clear old chunks for doc {doc_id} (might be new): {e}")
+    # Clear old chunks before re-indexing to prevent duplicates
+    try:
+        await client.delete_by_query(
+            index=index_name,
+            body={"query": {"term": {"document_id": doc_id}}},
+            refresh=True
+        )
+        logger.info(f"Cleared old chunks for doc {doc_id}")
+    except Exception as e:
+        logger.warning(f"Could not clear old chunks for doc {doc_id} (might be new): {e}")
 
     # Нарезать на чанки
     chunks = chunk_text(text)
@@ -68,28 +69,28 @@ async def index_document_content(
     elif not created_at:
         created_at = datetime.utcnow().isoformat()
 
-    # Индексировать чанки в ES
-    for i, (chunk, embedding) in enumerate(zip(chunks, embeddings)):
-        doc = {
-            "document_id": doc_id,
-            "chunk_id":    f"{doc_id}_{i}",
-            "uuid":        metadata.get("uuid"),
-            "number":      metadata.get("number"),
-            "status":      metadata.get("status"),
-            "author":      metadata.get("author"),
-            "filename":    metadata.get("filename") or filename,
-            "title":       title,
-            "content":     chunk,
-            "created_at":  created_at,
-            "embedding":   embedding
+    # Bulk index all chunks in a single request
+    actions = [
+        {
+            "_index": index_name,
+            "_id":    f"{doc_id}_{i}",
+            "_source": {
+                "document_id": doc_id,
+                "chunk_id":    f"{doc_id}_{i}",
+                "uuid":        metadata.get("uuid"),
+                "number":      metadata.get("number"),
+                "status":      metadata.get("status"),
+                "author":      metadata.get("author"),
+                "filename":    metadata.get("filename") or filename,
+                "title":       title,
+                "content":     chunk,
+                "created_at":  created_at,
+                "embedding":   embedding,
+            }
         }
-        await client.index(
-            index=index_name,
-            id=doc["chunk_id"],
-            document=doc
-        )
-
-    await client.indices.refresh(index=index_name)
+        for i, (chunk, embedding) in enumerate(zip(chunks, embeddings))
+    ]
+    await async_bulk(client, actions)
     logger.info(f"✓ Indexed doc {doc_id} — {len(chunks)} chunks")
 
     return {

@@ -22,11 +22,11 @@ class SingleSyncResponse(BaseModel):
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Глобальное состояние синхронизации
-is_syncing = False
+# Per-company sync lock: {company_id: bool}
+_syncing: dict[str, bool] = {}
+
 
 async def run_sync_in_background(company_id: str, document_id: str):
-    global is_syncing
     try:
         logger.info(f"Background sync started for company: {company_id}, doc: {document_id}")
         await sync_documents(company_id, document_id)
@@ -34,7 +34,7 @@ async def run_sync_in_background(company_id: str, document_id: str):
     except Exception as e:
         logger.error(f"Background sync failed: {e}")
     finally:
-        is_syncing = False
+        _syncing.pop(company_id, None)
 
 @router.post("/upload", response_model=Union[SyncResponse, SingleSyncResponse], summary="Sync Documents", description="Synchronize documents from PostgreSQL/MinIO to Elasticsearch")
 async def trigger_sync(
@@ -47,27 +47,24 @@ async def trigger_sync(
     Triggers a synchronization of documents from Postgres/MinIO to Elasticsearch.
     Returns immediately and runs the sync in the background.
     """
-    global is_syncing
-    
-    if is_syncing:
-        return {
-            "status": "already_running",
-            "message": "Synchronization is already in progress. Please Wait."
-        }
-    
     company_id = getattr(request.state, "company_id", None)
-    
+
     if not company_id and not document_id:
         raise HTTPException(status_code=400, detail="Either X-Company-ID header or document_id query parameter must be provided")
-    
-    is_syncing = True
-    
+
+    lock_key = company_id or f"doc_{document_id}"
+
+    if _syncing.get(lock_key):
+        return {
+            "status": "already_running",
+            "message": "Synchronization is already in progress for this company. Please wait."
+        }
+
     if document_id:
+        _syncing[lock_key] = True
         try:
             logger.info(f"Synchronous sync started for doc: {document_id}")
             synced_count, errors = await sync_documents(company_id, document_id)
-            is_syncing = False
-            
             if errors:
                 return {
                     "status": "partial_success" if synced_count > 0 else "failed",
@@ -75,7 +72,6 @@ async def trigger_sync(
                     "synced_count": synced_count,
                     "errors": errors
                 }
-            
             return {
                 "status": "success",
                 "message": f"Document {document_id} successfully synchronized.",
@@ -83,12 +79,14 @@ async def trigger_sync(
                 "errors": []
             }
         except Exception as e:
-            is_syncing = False
             logger.error(f"Synchronous sync failed: {e}")
             raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
-    
-    background_tasks.add_task(run_sync_in_background, company_id, document_id)
-    
+        finally:
+            _syncing.pop(lock_key, None)
+
+    _syncing[lock_key] = True
+    background_tasks.add_task(run_sync_in_background, company_id, None)
+
     return {
         "status": "started",
         "message": "Full synchronization started in background. Monitor logs for progress."
