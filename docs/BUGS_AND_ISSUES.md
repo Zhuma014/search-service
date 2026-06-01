@@ -127,7 +127,7 @@ Same applies to `minio_client.download_file()` in `minio_client.py`.
 
 ---
 
-### 🔴 BUG-14: `SYNC_LIMIT = 20` silently caps full sync
+### ✅ BUG-14: `SYNC_LIMIT = 20` silently caps full sync
 **File:** `config.py` (SYNC_LIMIT) + `app/services/sync_service.py:87`
 **Problem:** Full company sync is capped at 20 documents per run. A company with 200 documents will never be fully synced. The limit was likely meant as a safety valve but is too low.
 **Fix:** Either increase the default, or implement pagination in `sync_documents()` to loop until all documents are synced.

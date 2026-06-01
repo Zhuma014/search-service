@@ -75,8 +75,7 @@ async def sync_documents(company_id: str = None, document_id: str = None):
                 query_str += " AND d.id = :document_id"
                 params["document_id"] = int(document_id) if document_id.isdigit() else document_id
 
-            query_str += " ORDER BY d.id DESC LIMIT :limit"
-            params["limit"] = settings.SYNC_LIMIT
+            query_str += " ORDER BY d.id DESC"
 
             res = await session.execute(text(query_str), params)
             docs_metadata = [dict(row._mapping) for row in res.all()]
