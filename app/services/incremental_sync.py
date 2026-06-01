@@ -58,7 +58,7 @@ async def run_incremental_sync() -> dict:
                     OR EXISTS (
                         SELECT 1 FROM task t
                         WHERE t.document_id = d.id
-                          AND t.created_at > :last_sync
+                          AND t.completed_at > :last_sync
                     )
                   )
             """), {"company_id": int(company_id) if company_id.isdigit() else company_id,
