@@ -42,7 +42,7 @@ async def get_best_file(file_path: str) -> tuple[str, bytes]:
 
 async def sync_documents(company_id: str = None, document_id: str = None):
     
-    logger.info(f"Starting sync. Limit: {settings.SYNC_LIMIT}, Doc ID: {document_id}")
+    logger.info(f"Starting sync. Doc ID: {document_id}")
 
     factory = postgres_client.get_session_factory()
     if not factory:

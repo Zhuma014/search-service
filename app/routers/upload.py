@@ -29,8 +29,11 @@ _syncing: dict[str, bool] = {}
 async def run_sync_in_background(company_id: str, document_id: str):
     try:
         logger.info(f"Background sync started for company: {company_id}, doc: {document_id}")
-        await sync_documents(company_id, document_id)
-        logger.info("Background sync completed successfully")
+        synced_count, errors = await sync_documents(company_id, document_id)
+        logger.info(f"Background sync completed — synced: {synced_count}, errors: {len(errors)}")
+        if errors:
+            for err in errors:
+                logger.error(f"  Sync error: {err}")
     except Exception as e:
         logger.error(f"Background sync failed: {e}")
     finally:
