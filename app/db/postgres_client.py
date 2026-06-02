@@ -27,12 +27,12 @@ class PostgresClient:
                 echo=False,
                 pool_size=10,              # ← Основной размер пула
                 max_overflow=20,           # ← Дополнительные соединения если нужны
-                pool_timeout=10,           # ← Максимум 30 сек ждать соединение
-                pool_recycle=300,         # ← Переиспользовать каждый час
-                pool_pre_ping=True,        # ← Проверять соединение перед использованием
+                pool_timeout=30,           # max wait for a connection from pool
+                pool_recycle=3600,         # recycle connections every 1 hour
+                pool_pre_ping=True,        # verify connection before use
                 connect_args={
-                    "timeout": 10,         # ← таймаут подключения 10 сек
-                    "command_timeout": 10, # ← таймаут запроса 10 сек
+                    "timeout": 30,         # SSL handshake + TCP connect timeout
+                    "command_timeout": 30, # query execution timeout
                     "ssl": "require"
                 }
             )

@@ -30,11 +30,15 @@ async def run_incremental_sync() -> dict:
         return {"synced": 0, "errors": 0}
 
     # Discover all company IDs present in the document table
-    async with factory() as session:
-        res = await session.execute(text(
-            "SELECT DISTINCT company_id FROM document WHERE company_id IS NOT NULL"
-        ))
-        company_ids = [str(row[0]) for row in res.all()]
+    try:
+        async with factory() as session:
+            res = await session.execute(text(
+                "SELECT DISTINCT company_id FROM document WHERE company_id IS NOT NULL"
+            ))
+            company_ids = [str(row[0]) for row in res.all()]
+    except Exception as e:
+        logger.error(f"Incremental sync: failed to fetch company IDs: {e}")
+        return {"synced": 0, "errors": 0}
 
     if not company_ids:
         logger.info("Incremental sync: no companies found, nothing to do")
@@ -45,25 +49,29 @@ async def run_incremental_sync() -> dict:
     for company_id in company_ids:
         last_sync = _last_sync_at.get(company_id, now - timedelta(hours=1))
 
-        async with factory() as session:
-            res = await session.execute(text("""
-                SELECT DISTINCT d.id
-                FROM document d
-                JOIN document_translation dt ON dt.document_id = d.id
-                WHERE d.company_id = :company_id
-                  AND dt.file_path IS NOT NULL AND dt.file_path != ''
-                  AND dt.filename IS NOT NULL AND dt.filename != ''
-                  AND (
-                    d.created_at > :last_sync
-                    OR EXISTS (
-                        SELECT 1 FROM task t
-                        WHERE t.document_id = d.id
-                          AND t.completed_at > :last_sync
-                    )
-                  )
-            """), {"company_id": int(company_id) if company_id.isdigit() else company_id,
-                   "last_sync": last_sync})
-            doc_ids = [str(row[0]) for row in res.all()]
+        try:
+            async with factory() as session:
+                res = await session.execute(text("""
+                    SELECT DISTINCT d.id
+                    FROM document d
+                    JOIN document_translation dt ON dt.document_id = d.id
+                    WHERE d.company_id = :company_id
+                      AND dt.file_path IS NOT NULL AND dt.file_path != ''
+                      AND dt.filename IS NOT NULL AND dt.filename != ''
+                      AND (
+                        d.created_at > :last_sync
+                        OR EXISTS (
+                            SELECT 1 FROM task t
+                            WHERE t.document_id = d.id
+                              AND t.completed_at > :last_sync
+                        )
+                      )
+                """), {"company_id": int(company_id) if company_id.isdigit() else company_id,
+                       "last_sync": last_sync})
+                doc_ids = [str(row[0]) for row in res.all()]
+        except Exception as e:
+            logger.error(f"Incremental sync: failed to query docs for company {company_id}: {e}")
+            continue
 
         if not doc_ids:
             logger.info(f"Incremental sync: company {company_id} — no new docs since {last_sync.isoformat()}")
