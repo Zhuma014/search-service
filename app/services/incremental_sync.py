@@ -1,5 +1,6 @@
 from app.db.postgres_client import postgres_client
 from app.services.sync_service import sync_documents
+from app.elasticsearch.client import ESClient, get_index_name
 from sqlalchemy import text
 from datetime import datetime, timedelta
 import logging
@@ -75,23 +76,90 @@ async def run_incremental_sync() -> dict:
 
         if not doc_ids:
             logger.info(f"Incremental sync: company {company_id} — no new docs since {last_sync.isoformat()}")
-            _last_sync_at[company_id] = now
-            continue
+        else:
+            logger.info(f"Incremental sync: company {company_id} — {len(doc_ids)} docs to sync")
+            for doc_id in doc_ids:
+                try:
+                    synced, errors = await sync_documents(company_id, doc_id)
+                    total_synced += synced
+                    total_errors += len(errors)
+                    if errors:
+                        logger.warning(f"Incremental sync: doc {doc_id} errors: {errors}")
+                except Exception as e:
+                    total_errors += 1
+                    logger.error(f"Incremental sync: failed to sync doc {doc_id}: {e}")
 
-        logger.info(f"Incremental sync: company {company_id} — {len(doc_ids)} docs to sync")
-
-        for doc_id in doc_ids:
-            try:
-                synced, errors = await sync_documents(company_id, doc_id)
-                total_synced += synced
-                total_errors += len(errors)
-                if errors:
-                    logger.warning(f"Incremental sync: doc {doc_id} errors: {errors}")
-            except Exception as e:
-                total_errors += 1
-                logger.error(f"Incremental sync: failed to sync doc {doc_id}: {e}")
+        # ── Удалить из ES документы, которых больше нет в PG ──────────────
+        total_deleted = await _cleanup_deleted_docs(company_id, factory)
+        if total_deleted:
+            logger.info(f"Incremental sync: company {company_id} — removed {total_deleted} deleted docs from ES")
 
         _last_sync_at[company_id] = now
 
     logger.info(f"Incremental sync done — synced: {total_synced}, errors: {total_errors}")
     return {"synced": total_synced, "errors": total_errors}
+
+
+async def _cleanup_deleted_docs(company_id: str, factory) -> int:
+    """
+    Finds document_ids that exist in ES but are no longer in PG,
+    and removes them from the ES index.
+    Returns the number of deleted documents.
+    """
+    index_name = get_index_name(company_id)
+    es_client  = ESClient.get_client()
+
+    # 1. Get all unique document_ids from ES for this company
+    try:
+        resp = await es_client.search(
+            index=index_name,
+            body={
+                "size": 0,
+                "aggs": {
+                    "all_doc_ids": {
+                        "terms": {"field": "document_id", "size": 100000}
+                    }
+                }
+            }
+        )
+        es_doc_ids = {
+            b["key"] for b in resp["aggregations"]["all_doc_ids"]["buckets"]
+        }
+    except Exception as e:
+        logger.error(f"Cleanup: failed to fetch ES doc IDs for company {company_id}: {e}")
+        return 0
+
+    if not es_doc_ids:
+        return 0
+
+    # 2. Check which of those still exist in PG
+    try:
+        async with factory() as session:
+            res = await session.execute(text(
+                "SELECT id FROM document WHERE id = ANY(:ids)"
+            ), {"ids": [int(d) for d in es_doc_ids if d.isdigit()]})
+            pg_doc_ids = {str(row[0]) for row in res.all()}
+    except Exception as e:
+        logger.error(f"Cleanup: failed to fetch PG doc IDs for company {company_id}: {e}")
+        return 0
+
+    # 3. IDs in ES but not in PG → deleted
+    orphaned = es_doc_ids - pg_doc_ids
+    if not orphaned:
+        return 0
+
+    logger.info(f"Cleanup: found {len(orphaned)} orphaned docs in ES for company {company_id}: {orphaned}")
+
+    deleted_count = 0
+    for doc_id in orphaned:
+        try:
+            resp = await es_client.delete_by_query(
+                index=index_name,
+                body={"query": {"term": {"document_id": doc_id}}}
+            )
+            deleted_count += 1
+            logger.info(f"Cleanup: removed doc {doc_id} ({resp.get('deleted', 0)} chunks) from ES")
+        except Exception as e:
+            logger.error(f"Cleanup: failed to delete doc {doc_id} from ES: {e}")
+
+    return deleted_count
